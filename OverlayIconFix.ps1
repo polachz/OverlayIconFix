@@ -247,7 +247,7 @@ function GetAclItemPath{
 function WriteACLToSystem {
 	param([Parameter(Mandatory=$True,Position=1)] $acl, [string]$errorMessage=$null, [string]$actionInfo=$null )
 	try{
-		$acl | Set-Acl
+		$acl | Set-Acl $acl -ErrorAction Continue
 	}catch{
 		if($errorMessage){
 			Write-Host $errorMessage -ForegroundColor Red
@@ -547,7 +547,7 @@ function CheckExpectedState
 	$acl = Get-Acl $RegPath 
 	$owner = $acl.Owner
 	$inheritance = InheritanceDesc $RegPath
-
+	Write-Host $inheritance
 	$ownerOk = $owner -eq $expectedOwner
 	$inheritanceOK = $inheritance -eq $expectedInheritance
 	if (!$ownerOk -or !$inheritanceOK){
@@ -558,9 +558,9 @@ function CheckExpectedState
 		Write-Host "$expectedOwner" -ForegroundColor Green 
 		Write-Host "         Current state is Inheritance:  "-ForegroundColor Yellow -NoNewline
 		if($inheritanceOK){
-			Write-Host "$expectedInheritance " -ForegroundColor Green -NoNewline
+			Write-Host "$inheritance " -ForegroundColor Green -NoNewline
 		}else{
-			Write-Host "$expectedInheritance " -ForegroundColor Red -NoNewline
+			Write-Host "$inheritance " -ForegroundColor Red -NoNewline
 		}
 		Write-Host "and Key owner: " -ForegroundColor Yellow -NoNewline
 		if($ownerOk){
