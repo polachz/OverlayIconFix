@@ -41,19 +41,20 @@
 	.Example
         overlayIconFix.ps1 lockRegistryKey
 		Locks the registry key with Overlay Icon Records against modifications from other processes running 
-		under SYSTEM account. The Lock block Dropbox or other simmilar services to provide own reordering of
+		under SYSTEM account. It block Dropbox or other simmilar services to provide own reordering of
 		the Icon records. In details it changes owner of the Key and Sub-Keys to Administrators group, disable 
-		Access Right Inheritance on the key and then remove Write rights for SYSTEM account. 
+		Access Right Inheritance on the key and then remove Write rights for the SYSTEM account. 
 		
 	.Example
         overlayIconFix.ps1 reorderRegistry -OrderFilePath X:\order.txt
 		Re-orders Icon records to same order as specified in the Order file. 
-		Can be used many times to organize Icons to required order.
+		Can be used many times to organize Icons to required order. But without lock it can be change by
+		other service easily as for exaple DropBox does. 
 		 
 	.Example
         overlayIconFix.ps1 restoreRegistryKey
-		Remove Lock from the Overlay Icons Registry key and restore it to original state. Returns owner to 
-		the SYSTEM account and restore access rights to the key to original state.
+		Remove Lock from the Overlay Icons Registry key and restore it to original state. Returns ownership to 
+		the SYSTEM account, enable inheritance again and restore access rights to the key to original values.
 
     .Notes
         NAME:      overlayIconFix.ps1
@@ -191,6 +192,49 @@ function QueryUserYesNo{
 		}
 }
 
+function CreateOrderFileFunc {
+	param ([string]$orderFileName, [string]$dirPath= "." )
+
+	$filePath = Join-Path $dirPath $orderFileName
+	$query = Test-Path -Path $filePath -ErrorAction SilentlyContinue
+	if( $query) {
+		$query = QueryUserYesNo "The file $orderFileName already exists. Do you want to overwrite?"
+		if(!$query){
+			Write-Host "You answered No. The operation will be aborted." -ForegroundColor Red
+			return $false
+		}else{
+			Write-Host "You answered Yes. The script will continue with Order file creation" -ForegroundColor Green
+			Write-Host ""
+		}
+		Remove-Item -Path $filePath -Force -ErrorAction SilentlyContinue | Out-Null
+		if( Test-Path -Path $filePath -ErrorAction SilentlyContinue)  {
+			Write-Host "Unable to delete the file ""$orderFileName""!!" -foregroundcolor red
+			Write-Host "Please remove the file manualy.. Unable to continue!" -foregroundcolor red
+			return $false
+		}
+	}
+	Get-ChildItem $RegPath | ForEach-Object	-Process {
+		$origName = $_.PSChildName
+		$trimName = TrimRegKeyName -Name $origName
+		$trimName | Add-Content -Path $filePath
+	}
+	if(Test-Path -Path $filePath -ErrorAction SilentlyContinue) {
+		$size = (Get-Item $filePath).length
+		if($size -gt 0){
+			$measures = (Get-Content -Path $filePath | measure -Line)
+			$lines = $measures.Lines
+			Write-Host "The file ""$orderFileName"" (Size: $size bytes) with $lines items has been succesfully written." -foregroundcolor green	
+		}else{
+			Write-Host "Warning: The file ""$orderFileName"" has been written but has zero size!!" -foregroundcolor Yellow
+		}
+		return $true
+	}else{
+		Write-Host "Error: The file ""$orderFileName"" can't be created!!" -foregroundcolor red
+		return $false
+	}
+}
+
+
 function GetAclItemPath{
 	param($acl)
 	if(!$acl){
@@ -267,7 +311,7 @@ function SetOwnerAsAdministrators {
 
 	$adminGroup = New-Object System.Security.Principal.NTAccount("Builtin", "Administrators")
 	if(!$adminGroup){
-		Write-Host "Error: Unable to create NTACCOUNT for user  Builtin\Administrators" -ForegroundColor Red
+		Write-Host "Error: Unable to create NTACCOUNT for group  Builtin\Administrators" -ForegroundColor Red
 		return $false
 	}
 	SetOwnerToRegKey -RegKey $RegKey -ownerAccount $adminGroup -Recursive:$Recursive 
@@ -327,8 +371,8 @@ function RemoveNonInheritedRights{
 	if( $items -gt 0){
 		$notinherit  = $acl | Select-Object -ExpandProperty Access | Where-Object { -Not $_.IsInherited }
 		Write-Host "Warning: Unable to remove all rules automatically." -ForegroundColor Yellow
-		Write-Host "         Please go to key: ""$RegPath""." -ForegroundColor Yellow
-		Write-Host "         And remove these rules WITHOUT INHERITANCE manually:" -ForegroundColor Yellow
+		Write-Host "         Please go to key: ""$RegPath""" -ForegroundColor Yellow
+		Write-Host "         and remove these rules WITHOUT INHERITANCE manually:" -ForegroundColor Yellow
 		Write-Host ""
 		$notinherit | Foreach-Object  { 
 			$name = $_.IdentityReference
@@ -347,49 +391,14 @@ function RemoveNonInheritedRights{
 	return $true
 }
 
-function CreateOrderFile{
-	param([string]$fileName, [string]$dirPath=".\")
-	$filePath = Join-Path $dirPath $orderFileName
-	if(Test-Path -Path $filePath -ErrorAction SilentlyContinue) {
-		$query = QueryUserYesNo "The file $orderFileName already exists. Do you want to overwrite?"
-		if($query){
-			Remove-Item –path $filePath -force -ErrorAction SilentlyContinue | Out-Null
-			if( Test-Path -Path $filePath -ErrorAction SilentlyContinue)  {
-				Write-Host "Unable to delete file ""$orderFileName""!!" -foregroundcolor red	
-				Write-Host "Please clean files manualy.. Unable to continue!" -foregroundcolor red	
-				return $false
-			}
-		}else{
-			return $false
-		}
-	}
-	Get-ChildItem $RegPath | ForEach-Object {
-		$origName = $_.PSChildName
-		$trimName = TrimRegKeyName $origName
-		$trimName | Add-Content -Path $filePath
-	}
-	if(Test-Path -Path $filePath -ErrorAction SilentlyContinue) {
-		$size = (Get-Item $filePath).length
-		if($size -gt 0){
-			$measures = Get-Content $filePath | Measure-Object –Line
-			$lines = $measures.Lines
-			Write-Host "The file ""$orderFileName"" (Size: $size bytes) with $lines items has been succesfully written." -foregroundcolor green	
-		}else{
-			Write-Host "Warning: The file ""$orderFileName"" has been written but has zero size!!" -foregroundcolor Yellow	
-		}
-		return $true
-	}else{
-		Write-Host "Error: The file ""$orderFileName"" can't be created!!" -foregroundcolor red	
-		return $false
-	}
 
-}
+
 function CheckOrderFile{
 	param([string]$orderFileName, [string]$dirPath)
 	$orderFilePath = Join-Path $dirPath $orderFileName
 	if(-Not (Test-Path -Path $orderFilePath -ErrorAction SilentlyContinue) ) {
-		Write-Host "Error: The order file ""$orderFileName"" doesn't erxist in ""$dirPath"" folder!!" -foregroundcolor red	
-		Write-Host "Please create the order file and try again..."
+		Write-Host "Error: The Order file ""$orderFileName"" doesn't erxist in ""$dirPath"" folder!!" -foregroundcolor red	
+		Write-Host "Please create the Order file and try again..."
 		return $false	
 	}
 	return $true
@@ -411,7 +420,7 @@ function CheckUnprocessedItems{
 	}
 	Write-Host ""
 	if($realItems -eq 0){
-		Write-Host "All Items from Order File Has been processed succesfully." -ForegroundColor Green
+		Write-Host "All Items from Order file has been processed succesfully." -ForegroundColor Green
 	}else{
 		Write-Host "Warning: $realItems unprocessed item(s) from Order file has been reported." -ForegroundColor Yellow
 	}
@@ -476,9 +485,9 @@ function ShowRegistryState{
 	$owner = $acl.Owner
 	Write-Host "Ownwr of the key: $owner" -ForegroundColor Green
 	if ($acl.AreAccessRulesProtected){
-		Write-Host "Registry key Inheritance is disabled" -ForegroundColor Green
+		Write-Host "Registry key inheritance is disabled" -ForegroundColor Green
 	}else{
-		Write-Host "Registry key Inherits rights from parent" -ForegroundColor Yellow
+		Write-Host "Registry key inherits rights from parent" -ForegroundColor Yellow
 		
 	}
 	Write-Host ""
@@ -509,7 +518,7 @@ function RegModifyQuery{
 		Write-Host "Warning: This operation modify the Windows Registry." -ForegroundColor Yellow
 		Write-Host "         This can brings unpredictable results to the Windows OS." -ForegroundColor Yellow
 		Write-Host "         Author of the script doesn't take any reponsibility for the operation." -ForegroundColor Yellow
-		Write-Host "         You provide this opration on your own risk!!." -ForegroundColor Yellow
+		Write-Host "         You provide this operation on your own risk!!" -ForegroundColor Yellow
 		Write-Host ""
 	}
 	$query = QueryUserYesNo "Do you want to proceed with Registry modification?"
@@ -542,7 +551,7 @@ function CheckExpectedState
 	$ownerOk = $owner -eq $expectedOwner
 	$inheritanceOK = $inheritance -eq $expectedInheritance
 	if (!$ownerOk -or !$inheritanceOK){
-		Write-Host "Warning: Seems that the Registrt Key is already modified by script or another way" -ForegroundColor Yellow
+		Write-Host "Warning: Seems that the Registry key is already modified by script or another way" -ForegroundColor Yellow
 		Write-Host "         Expected state is Inheritance: " -ForegroundColor Yellow -NoNewline
 		Write-Host "$expectedInheritance " -ForegroundColor Green -NoNewline
 		Write-Host "and Key owner: " -ForegroundColor Yellow -NoNewline
@@ -571,7 +580,7 @@ function CheckExpectedState
 	Write-Host "and Key owner: "  -NoNewline
 	Write-Host "$expectedOwner" -ForegroundColor Green 
 
-	Write-Host "Check of Registry key state is sucessful." -ForegroundColor Green
+	Write-Host "Check of the Registry key state is sucessful." -ForegroundColor Green
 	Write-Host "" 
 	return $true
 }
@@ -724,8 +733,8 @@ Write-Host ""
 
 switch($Action)
 {
-	"createOrderFile"    {$xx =CreateOrderFile $orderFileName $orderFileDir ;	break	}
-	"dumpOrderFile"      {$xx = DumpOrderFile $orderFileName $orderFileDir ;  break}
+	"createOrderFile"    {$xx =CreateOrderFileFunc -orderFileName $orderFileName -dirPath $orderFileDir ;	break	}
+	"dumpOrderFile"      {$xx = DumpOrderFile -orderFileName $orderFileName -dirPath $orderFileDir ;  break}
 	"showRegistry"       {$xx = ShowRegistryState ; break }
 	"reorderRegistry"    {$xx = ModifyRegistryByOrderFile -orderFileName $orderFileName -dirPath $orderFileDir  ;break }
 	"lockRegistryKey"    {$xx = LockRegKey; break}
