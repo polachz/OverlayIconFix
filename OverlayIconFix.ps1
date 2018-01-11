@@ -483,7 +483,7 @@ function ShowRegistryState{
 	$items =$array.length
 	$acl = Get-Acl $RegPath 
 	$owner = $acl.Owner
-	Write-Host "Ownwr of the key: $owner" -ForegroundColor Green
+	Write-Host "Owner of the key: $owner" -ForegroundColor Green
 	if ($acl.AreAccessRulesProtected){
 		Write-Host "Registry key inheritance is disabled" -ForegroundColor Green
 	}else{
