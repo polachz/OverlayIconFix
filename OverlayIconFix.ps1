@@ -15,7 +15,8 @@
  
     .Parameter OrderFilePath    
         Specifies path to Order file. This file specifies required order of Overlay Icon Records in the Registry
-		If empty, script expects the file "orderFile.txt" in current directory
+		If empty, script expects the file "orderFile.txt" in current directory. The parameter make sense for 
+		createOrderFile, dumpOrderFile, fixAndLock and reorderRegistry commands.
     
     .Example
         overlayIconFix.ps1 showRegistry
