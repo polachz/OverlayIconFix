@@ -1,6 +1,5 @@
 # OverlayIconFix
-
-This script has been created to solve a nightmare in Windows Overlay Icons handling. 
+This script has been created to solve a nightmare in Windows Overlay Icons handling. It allows to protect the TortoiseGIT or SVN Icons against Dropbox
 
 Because the Windows OS is able to process just 15 overlay icons at one time. Many programs pushed own icons on top of the Overlay Icon records list at all costs. The Dropbox is famous about that and even many users complain to Dropbox that they need to use different icons, for Git or SVN for example and Dropbox is not priority for them, Dropbox ignore these voices and still push all own 8 icons on top of the list.
 
