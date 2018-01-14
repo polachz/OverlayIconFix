@@ -11,7 +11,7 @@
 		
 	.Parameter Action    
         Specifies required action: createOrderFile, dumpOrderFile, showRegistry, reorderRegistry
-		lockRegistryKey, restoreRegistryKey, fixAndLock
+		lockRegistryKey, unlockRegistryKey, fixAndLock, restoreRegistryKeys unlockAndRestore
  
     .Parameter OrderFilePath    
         Specifies path to Order file. This file specifies required order of Overlay Icon Records in the Registry
@@ -52,9 +52,18 @@
 		other service easily as for exaple DropBox does. 
 		 
 	.Example
-        overlayIconFix.ps1 restoreRegistryKey
+        overlayIconFix.ps1 unlockRegistryKey
 		Remove Lock from the Overlay Icons Registry key and restore it to original state. Returns ownership to 
 		the SYSTEM account, enable inheritance again and restore access rights to the key to original values.
+
+	.Example
+        overlayIconFix.ps1 restoreRegistryKeys
+		Restore Icon record names under the Overlay Icons Registry to original states. Removes script prefix 
+		and unused spaces. Order of item snow be driven by alphabetical order of their names
+
+	.Example
+        overlayIconFix.ps1 unlockAndRestore
+		This action joins unlockRegistryKey and restoreRegistryKeys to one action.
 
     .Notes
         NAME:      overlayIconFix.ps1
@@ -65,7 +74,8 @@
 
 [CmdletBinding(SupportsShouldProcess=$True)]
 Param(
-	[Parameter(Mandatory=$True,Position=1)][ValidateSet("createOrderFile","dumpOrderFile","showRegistry","reorderRegistry", "lockRegistryKey", "restoreRegistryKey", "fixAndLock")][string]$Action,
+	[Parameter(Mandatory=$True,Position=1)][ValidateSet("createOrderFile","dumpOrderFile","showRegistry","reorderRegistry", "lockRegistryKey", 
+		"unlockRegistryKey", "fixAndLock", "restoreRegistryKeys", "unlockAndRestore")][string]$Action,
 	[string]$OrderFilePath =".\orderFile.txt"
 )
 
@@ -74,8 +84,11 @@ $RegPath="Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shel
 
 #dummy value for internal purposes. It's used to detect Order File unused items
 $dummyItem ="&*&Dummy"
+#array of Reg Keys which will be ignored
+#we know for exeple that EnhancedStorageShell has no inheritance and is owned by TrustedInstaller
+#because we don't need to reorder this item (usually) then we can ignore it during whole processing
 
-
+$RegKeysIgnoredArray = @("EnhancedStorageShell" )
 #script to allow get rights necessary to change RegKey owner
 $definition = @'
  using System;
@@ -215,8 +228,11 @@ function CreateOrderFileFunc {
 	}
 	Get-ChildItem $RegPath | ForEach-Object	-Process {
 		$origName = $_.PSChildName
-		$trimName = TrimRegKeyName -Name $origName
-		$trimName | Add-Content -Path $filePath
+		#do not put ignored keys to order file
+		if ($RegKeysIgnoredArray -notcontains $origName){
+			$trimName = TrimRegKeyName -Name $origName
+			$trimName | Add-Content -Path $filePath
+		}
 	}
 	if(Test-Path -Path $filePath -ErrorAction SilentlyContinue) {
 		$size = (Get-Item $filePath).length
@@ -247,7 +263,8 @@ function GetAclItemPath{
 function WriteACLToSystem {
 	param([Parameter(Mandatory=$True,Position=1)] $acl, [string]$errorMessage=$null, [string]$actionInfo=$null )
 	try{
-		$acl | Set-Acl $acl -ErrorAction Continue
+		$aclPath = GetAclItemPath $acl
+		Set-Acl -Path $acl.path -AclObject $acl -ErrorAction Continue
 	}catch{
 		if($errorMessage){
 			Write-Host $errorMessage -ForegroundColor Red
@@ -266,9 +283,13 @@ function WriteACLToSystem {
 #Function for recursive operation to avoid multiple settings od process rights
 function SetOwnerToRegKeyInternal{
 	param($RegKey, $ownerAccount, [switch]$Recursive)
-	$acl = Get-Acl $RegKey
-	$acl.SetOwner($ownerAccount)
-	if(-Not (WriteACLToSystem $acl -actionInfo "Write new owner")){	return $false }
+	$pureName = Split-Path $RegKey -leaf
+	#do not modify ignored item rights
+	if ($RegKeysIgnoredArray -notcontains $pureName){
+		$acl = Get-Acl $RegKey
+		$acl.SetOwner($ownerAccount)
+		if(-Not (WriteACLToSystem $acl -actionInfo "Write new owner")){	return $false }
+	}
 	if($Recursive){
 		#now process all subitems
 		Get-ChildItem $RegKey | ForEach-Object {
@@ -478,6 +499,7 @@ function ShowRegistryState{
 	$array = @()
 	Get-ChildItem $RegPath | ForEach-Object {
 		$origName = $_.PSChildName
+		#we can show all items in the registry here - do not check for Ignored Items
 		$array += $origName
 	}
 	$items =$array.length
@@ -702,21 +724,24 @@ function ModifyRegistryByOrderFile{
 	#and now rename the keys
 	Get-ChildItem $RegPath | ForEach-Object {
 		$origName = $_.PSChildName
-		$trimName = TrimRegKeyName $origName
-		$index = FindItemInArray $array $trimName -ReplaceWithDummy
-		if($index -lt 0){
-			Write-Host "Item ""$trimName "" is not in the Order file. Just trim whitespaces" -ForegroundColor Yellow
-			if(-Not($origName -eq $trimName)){
-				Rename-Item -Path "Registry::$_" -NewName $trimName	
-			}
-		}else{
-			$num = ($index+1).ToString("00")
-			$newItemName =" $num#!_$trimName"
-			if(-Not($origName -eq $newItemName)){
-				Write-Host "The ""$trimName"" has been found in the Order file. Item will be renamed  ""$origName"" --> ""$newItemName""" -ForegroundColor Green
-				Rename-Item -Path "Registry::$_" -NewName $newItemName	
+		#skip IgnoredRegKeys
+		if ($RegKeysIgnoredArray -notcontains $origName){
+			$trimName = TrimRegKeyName $origName
+			$index = FindItemInArray $array $trimName -ReplaceWithDummy
+			if($index -lt 0){
+				Write-Host "Item ""$trimName "" is not in the Order file. Just trim whitespaces" -ForegroundColor Yellow
+				if(-Not($origName -eq $trimName)){
+					Rename-Item -Path "Registry::$_" -NewName $trimName	
+				}
 			}else{
-				Write-Host "The ""$trimName"" has been found in the Order file. Name ""$origName"" is already in required form" -ForegroundColor Green
+				$num = ($index+1).ToString("00")
+				$newItemName =" $num#!_$trimName"
+				if(-Not($origName -eq $newItemName)){
+					Write-Host "The ""$trimName"" has been found in the Order file. Item will be renamed  ""$origName"" --> ""$newItemName""" -ForegroundColor Green
+					Rename-Item -Path "Registry::$_" -NewName $newItemName	
+				}else{
+					Write-Host "The ""$trimName"" has been found in the Order file. Name ""$origName"" is already in required form" -ForegroundColor Green
+				}
 			}
 		}
 	}
@@ -724,6 +749,22 @@ function ModifyRegistryByOrderFile{
 	Write-Host ""
 	Write-Host "The Re-order process has been finished." -foregroundcolor Green	
 	Write-Host ""
+}
+
+function RemoveScriptRegKeyPrefix
+{
+	Get-ChildItem $RegPath | ForEach-Object {
+		$origName = $_.PSChildName
+		#skip IgnoredRegKeys
+		if ($RegKeysIgnoredArray -notcontains $origName){
+			$trimName = TrimRegKeyName $origName
+			if($trimName -ne $origName){
+				#rename to name without prefix and spaces
+				Write-Host "Removing script prefix and spaces. Item: ""$origName"" --> ""$trimName""" -ForegroundColor Green
+				Rename-Item -Path "Registry::$_" -NewName $trimName	
+			}
+		}
+	}
 }
 
 $orderFileDir = Split-Path $OrderFilePath -parent
@@ -738,7 +779,9 @@ switch($Action)
 	"showRegistry"       {$xx = ShowRegistryState ; break }
 	"reorderRegistry"    {$xx = ModifyRegistryByOrderFile -orderFileName $orderFileName -dirPath $orderFileDir  ;break }
 	"lockRegistryKey"    {$xx = LockRegKey; break}
-	"restoreRegistryKey" {$xx = RestoreKeyOriginalRightsAndInheritance; break}
+	"unlockRegistryKey"  {$xx = RestoreKeyOriginalRightsAndInheritance; break}
+	"restoreRegistryKeys"{$xx = RemoveScriptRegKeyPrefix ;break}
+	"unlockAndRestore"   {$xx = RemoveScriptRegKeyPrefix; RestoreKeyOriginalRightsAndInheritance ;break}
 	"fixAndLock"{
 		$xx = LockRegKey;
 		if($xx){
