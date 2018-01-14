@@ -60,3 +60,18 @@ Specifies path to Order file. This file specifies required order of Overlay Icon
 
 * **unlockAndRestore**:     *.\overlayIconFix.ps1 unlockAndRestore*    
 		This action joins unlockRegistryKey and restoreRegistryKeys to one action.
+
+
+### DropBox Icons Identifiers
+
+Because DropBox doesn't use self-explanatory Overlay Icons identifiers, here is list of identifiers with explanatory what each icon means. It's copied from some web resources:
+
+ 1. **DropboxExt01** - Synced! - (green)
+ 2. **DropboxExt02** - Sync in progress (blue)
+ 3. **DropboxExt03** - Locked: Synced! (green + lock)
+ 4. **DropboxExt04** - Locked: Sync in progress (blue + lock)
+ 5. **DropboxExt05** - Sync not happening (red X)
+ 6. **DropboxExt06** - Locked: Sync not happening (red X + Lock)
+ 7. **DropboxExt07** - A file or folder isn't syncing (gray minus)
+ 8. **DropboxExt08** - Locked: A file or folder isn't syncing (gray minus + Lock)
+
