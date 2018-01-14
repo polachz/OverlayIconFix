@@ -64,7 +64,7 @@ Specifies path to Order file. This file specifies required order of Overlay Icon
 
 ### DropBox Icons Identifiers
 
-Because DropBox doesn't use self-explanatory Overlay Icons identifiers, here is list of identifiers with explanatory what each icon means. It's copied from some web resources:
+Because DropBox doesn't use self-explanatory Overlay Icons identifiers here is list of identifiers with explanation what each Item ans it's related Icon means. It's copied from some web resources:
 
  1. **DropboxExt01** - Synced! - (green)
  2. **DropboxExt02** - Sync in progress (blue)
