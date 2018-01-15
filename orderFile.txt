@@ -19,8 +19,6 @@ DropboxExt09
 DropboxExt10
 Tortoise8Ignored
 Tortoise9Unversioned
-OneDrive1
-OneDrive2
 OneDrive3
 OneDrive4
 OneDrive5
